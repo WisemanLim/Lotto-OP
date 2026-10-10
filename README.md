@@ -2,6 +2,8 @@
 
 빌드·백엔드 없이 **단일 HTML 파일**로 동작하는 로또 6/45 추첨 시뮬레이터입니다. GitHub Gist 등 One-Page 호스팅에 바로 올려 쓸 수 있도록 CSS·JS를 모두 `index.html` 한 파일에 인라인으로 담았습니다.
 
+**Live Demo:** https://wisemanlim.github.io/Lotto-OP/
+
 ## 실행 방법
 
 - 별도 설치·빌드 없이 `index.html`을 브라우저로 열면 바로 동작합니다.
@@ -72,7 +74,8 @@ Lotto-OP/
 - `index.html` 상단 `<style>` 내 `:root` 변수로 색상 테마 변경 가능.
 - 드럼 크기: `.drum-frame` width/height와 스크립트의 `DRUM_R`(드럼 반지름), `renderBall()`의 `cx, cy`(중심 좌표)를 함께 조정해야 합니다(세 값이 서로 연동됨).
 - 공 개수/범위를 바꾸려면 `TOTAL` 상수와 `colorGroup()` 구간 기준을 함께 수정해야 합니다.
-- 추첨 속도: `startDraw()` 내 `sleep()` 호출 간격, `extractBall()` 내 애니메이션 시간(`setTimeout` 340ms/520ms, CSS transition 0.32s/0.5s)으로 조절합니다.
+- 추첨 속도: `startDraw()` 내 `sleep()` 호출 간격, `extractBall()` 내 3단계 애니메이션 시간(정렬 0.2s → 기둥 상승 0.68s → 낙하 0.5s, 각 `setTimeout` 값과 CSS transition 값을 함께 변경)으로 조절합니다.
+- 기둥 두께/높이: `.pillar`의 `width`와 `extractBall()`의 `RISE_H`(목표 높이)를 함께 조정합니다.
 
 ## 제한 사항
 
@@ -83,3 +86,31 @@ Lotto-OP/
 ## 브라우저 호환성
 
 최신 Chrome/Edge/Safari/Firefox 기준으로 테스트했습니다(CSS Grid/Flexbox, requestAnimationFrame, Web Audio API 사용). Internet Explorer는 지원하지 않습니다.
+
+## 배포 (GitHub Pages)
+
+### 설정 방법
+
+1. GitHub 저장소 **Settings → Pages** 이동.
+2. **Build and deployment → Source**: `Deploy from a branch` 선택.
+3. **Branch**: `main` / `/ (root)` 선택 후 **Save**.
+4. 이 저장소는 `index.html`이 루트에 있으므로 별도 `docs/` 폴더나 base path 설정이 필요 없습니다.
+5. 정상 설정되면 Pages 화면 상단에 `Your site is live at https://<계정>.github.io/<저장소명>/` 메시지가 뜹니다.
+6. 접속 주소: `https://wisemanlim.github.io/Lotto-OP/`
+
+### 접속이 안 될 때 점검 순서
+
+1. **저장소가 Public인지 확인** — Private 저장소는 GitHub Free 플랜에서 Pages를 외부 공개할 수 없습니다(Pro 이상 필요). 이 저장소는 Public이라 해당 없음.
+2. **루트에 `index.html`이 있는지 확인** — 파일명이 `index.html`(소문자)이어야 자동으로 루트 페이지로 서빙됩니다.
+3. **Settings → Pages에서 배포 상태 확인** — `Your site is live at ...` 문구가 없고 빌드 이력이 비어 있다면, **Pages 설정만 저장되고 실제 빌드가 한 번도 실행되지 않은 상태**입니다(Source를 지정하는 것과 사이트를 실제로 빌드/배포하는 것은 별개 이벤트입니다).
+4. **최초 빌드 미실행이 가장 흔한 원인**입니다 — 코드를 먼저 push하고 Pages 설정을 나중에 켠 경우, 설정 저장 시점에 빌드가 자동으로 걸리지 않을 수 있습니다. 이 경우 **`main` 브랜치에 새 커밋을 아무거나 push**하면 내부적으로 빌드가 트리거됩니다. (본 저장소도 이 문제였습니다 — 아래 "실제 발생 사례" 참고)
+5. 그래도 안 되면 Settings → Pages에서 Branch를 한 번 `None`으로 바꿔 Save한 뒤, 다시 `main`/`root`로 바꿔 Save — 강제로 재빌드를 유도합니다.
+6. 반영까지 보통 수십 초~수 분 걸릴 수 있으니, 브라우저 강력 새로고침(캐시 무시) 후 재확인.
+7. 커스텀 도메인(CNAME)을 쓰지 않는 한 `https://<계정>.github.io/<저장소명>/` 형태 URL만 유효합니다. 저장소명 대소문자·오탈자를 다시 확인하세요.
+
+### 실제 발생 사례 (이 저장소)
+
+- 증상: Pages 설정 완료 후에도 `https://wisemanlim.github.io/Lotto-OP/` 접속 시 **404**.
+- 원인 확인: GitHub API로 조회한 결과 `source`는 `main`/`/`로 정상 설정되어 있었으나, `GET /repos/.../pages/builds` 가 빈 배열(`[]`)을 반환 — **최초 빌드가 단 한 번도 실행되지 않은 상태**였습니다. (코드를 push한 뒤 Pages 설정을 켠 순서였기 때문으로 추정)
+- 조치: README를 포함한 새 커밋을 `main`에 push하여 빌드를 트리거. 이후 사이트가 정상 노출되는지 재확인했습니다.
+- 교훈: Pages Source 설정 직후 `Your site is live at ...` 메시지가 바로 보이지 않는다면, 설정만 저장되고 빌드는 아직 돌지 않았을 가능성이 높습니다 — 아무 변경사항이든 커밋 1개를 push해보세요.
