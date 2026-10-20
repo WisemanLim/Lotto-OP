@@ -945,9 +945,8 @@
   // DOM을 건드리지 않고 순수 숫자 연산만 반복한다(회차당 수십만 번 돌 수 있으므로).
   var simPool = [];
   for(var i=1;i<=TOTAL;i++) simPool.push(i);
-  var simMark = new Int32Array(TOTAL+1);  // 번호별 '마지막으로 당첨번호에 포함된 회차' 스탬프
-  var simStamp = 0;
-  var sim = null;   // {gamesPerRound, targetRank, hitRank, rounds, draw, games, t0, timer}
+  var simMark = new Uint8Array(TOTAL+1);  // 현재 당첨번호(drawnMain)에 포함된 번호 = 1
+  var sim = null;   // {gamesPerRound, targetRank, hitRank, rounds, games, t0, timer}
   var targetRank = parseInt(targetRankSel.value, 10);
 
   // 부분 Fisher–Yates: simPool 앞쪽 k개만 섞어 out[offset..offset+k-1]에 담는다.
@@ -967,19 +966,16 @@
     return 9;   // 낙첨
   }
 
-  // 1회차 = 당첨번호 1벌 + 게임 N벌. 목표 등수 이상을 달성한 게임 인덱스를 반환(없으면 -1).
-  // 달성 등수는 st.hitRank에 기록한다.
+  // 1회차 = 이미 확정된 당첨번호(drawnMain/drawnBonus)에 대해 게임 N벌을 새로 사서 판정.
+  // 목표 등수 이상을 달성한 게임 인덱스를 반환(없으면 -1). 달성 등수는 st.hitRank에 기록한다.
   function simRound(st){
-    pickInto(st.draw, 0, 7);
-    simStamp++;
-    for(var i=0;i<6;i++) simMark[st.draw[i]] = simStamp;
-    var bonus = st.draw[6];
+    var bonus = drawnBonus;
     for(var g=0; g<st.gamesPerRound; g++){
       var base = g*6, m = 0, hb = false;
       pickInto(st.games, base, 6);
       for(var i=0;i<6;i++){
         var n = st.games[base+i];
-        if(simMark[n] === simStamp) m++;
+        if(simMark[n]) m++;
         else if(n === bonus) hb = true;
       }
       var rank = simRankOf(m, hb);
@@ -1033,30 +1029,37 @@
     sim.timer = setTimeout(simStep, 0);
   }
 
-  // 결과는 텍스트로만 보고한다. 추첨기 트레이의 당첨번호와 등록된 게임 목록은 건드리지 않는다.
+  // 당첨번호는 그대로 두고, 목표 등수가 나온 마지막 회차의 게임 N벌을 게임 목록에 올린다.
   function simFinish(hitIdx){
     var st = sim, t = simTotals();
     simStop(false);
 
-    var asc = function(a,b){ return a-b; };
-    var simDraw = Array.prototype.slice.call(st.draw, 0, 6).sort(asc);
-    var winGame = Array.prototype.slice.call(st.games, hitIdx*6, hitIdx*6+6).sort(asc);
+    myGames = [];
+    for(var g=0; g<st.gamesPerRound; g++){
+      var nums = Array.prototype.slice.call(st.games, g*6, g*6+6).sort(function(a,b){return a-b;});
+      myGames.push({ nums: nums, rank: null });
+    }
+    checkResult();
+    checkBtn.disabled = false;
 
     simTotalBadge.textContent = '총 ' + t.games.toLocaleString() + '게임';
     resultBox.innerHTML =
-      '🎉 ' + st.targetRank + '등 목표 달성 — ' + st.hitRank + '등 당첨! · ' +
+      '🎉 ' + st.targetRank + '등 목표 달성 — ' + (hitIdx+1) + '번째 게임 ' + st.hitRank + '등! · ' +
       t.rounds.toLocaleString() + '회차 × ' + st.gamesPerRound + '게임 = 총 ' +
-      t.games.toLocaleString() + '게임 · ' + t.sec + '초<br>' +
-      '시뮬레이션 당첨번호: ' + simDraw.join(', ') + ' + 보너스 ' + st.draw[6] + '<br>' +
-      '당첨 게임(' + (hitIdx+1) + '번째): ' + winGame.join(', ');
-    resultBox.classList.add('show');
+      t.games.toLocaleString() + '게임 · ' + t.sec + '초<br>' + resultBox.innerHTML;
     beep(760, 0.1);
   }
 
   function simStart(){
+    if(drawnMain.length !== 6){
+      regMsg.textContent = '먼저 추첨을 진행하세요 (추첨 시작 또는 빠른 추첨).';
+      return;
+    }
     var n = targetGameCount;
+    simMark.fill(0);
+    for(var i=0;i<6;i++) simMark[drawnMain[i]] = 1;
     sim = { gamesPerRound: n, targetRank: targetRank, hitRank: null, rounds: 0,
-            draw: new Int32Array(7), games: new Int32Array(n*6), t0: performance.now(), timer: null };
+            games: new Int32Array(n*6), t0: performance.now(), timer: null };
     simLock();
     regMsg.textContent = '';
     simTotalBadge.textContent = '총 0게임';
