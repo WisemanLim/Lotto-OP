@@ -387,6 +387,15 @@
       </select>
       <span class="count-badge" id="countBadge">0 / 5 게임 등록</span>
       <button class="btn-primary btn-sm" id="instantPlayBtn">즉시 게임 확인</button>
+      <label for="targetRankSel">희망등수</label>
+      <select id="targetRankSel">
+        <option value="1" selected>1등</option>
+        <option value="2">2등</option>
+        <option value="3">3등</option>
+        <option value="4">4등</option>
+        <option value="5">5등</option>
+      </select>
+      <button class="btn-ghost btn-sm" id="jackpotBtn">1등까지 추첨</button>
     </div>
     <div class="picker-layout">
       <div class="picker-left">
@@ -435,6 +444,8 @@
   var gamesList = document.getElementById('gamesList');
   var clearGamesBtn = document.getElementById('clearGamesBtn');
   var instantPlayBtn = document.getElementById('instantPlayBtn');
+  var jackpotBtn = document.getElementById('jackpotBtn');
+  var targetRankSel = document.getElementById('targetRankSel');
 
   function colorGroup(n){
     if(n<=10) return 'g1';
@@ -928,12 +939,159 @@
     checkResult();
   }
 
+  // --- 1등까지 추첨 시뮬레이션 ---
+  // DOM을 건드리지 않고 순수 숫자 연산만 반복한다(회차당 수십만 번 돌 수 있으므로).
+  var simPool = [];
+  for(var i=1;i<=TOTAL;i++) simPool.push(i);
+  var simMark = new Int32Array(TOTAL+1);  // 번호별 '마지막으로 당첨번호에 포함된 회차' 스탬프
+  var simStamp = 0;
+  var sim = null;   // {gamesPerRound, targetRank, hitRank, rounds, draw, games, t0, timer}
+  var targetRank = parseInt(targetRankSel.value, 10);
+
+  // 부분 Fisher–Yates: simPool 앞쪽 k개만 섞어 out[offset..offset+k-1]에 담는다.
+  function pickInto(out, offset, k){
+    for(var i=0;i<k;i++){
+      var j = i + Math.floor(Math.random()*(TOTAL-i));
+      var t = simPool[i]; simPool[i] = simPool[j]; simPool[j] = t;
+      out[offset+i] = simPool[i];
+    }
+  }
+
+  function simRankOf(m, hasBonus){
+    if(m===6) return 1;
+    if(m===5) return hasBonus ? 2 : 3;
+    if(m===4) return 4;
+    if(m===3) return 5;
+    return 9;   // 낙첨
+  }
+
+  // 1회차 = 당첨번호 1벌 + 게임 N벌. 목표 등수 이상을 달성한 게임 인덱스를 반환(없으면 -1).
+  // 달성 등수는 st.hitRank에 기록한다.
+  function simRound(st){
+    pickInto(st.draw, 0, 7);
+    simStamp++;
+    for(var i=0;i<6;i++) simMark[st.draw[i]] = simStamp;
+    var bonus = st.draw[6];
+    for(var g=0; g<st.gamesPerRound; g++){
+      var base = g*6, m = 0, hb = false;
+      pickInto(st.games, base, 6);
+      for(var i=0;i<6;i++){
+        var n = st.games[base+i];
+        if(simMark[n] === simStamp) m++;
+        else if(n === bonus) hb = true;
+      }
+      var rank = simRankOf(m, hb);
+      if(rank <= st.targetRank){ st.hitRank = rank; return g; }
+    }
+    return -1;
+  }
+
+  function simTotals(){
+    return { rounds: sim.rounds, games: sim.rounds*sim.gamesPerRound, sec: ((performance.now()-sim.t0)/1000).toFixed(1) };
+  }
+
+  function showSimProgress(prefix){
+    var t = simTotals();
+    resultBox.innerHTML = sim.targetRank + '등 목표 · ' + prefix + ' — ' + t.rounds.toLocaleString() + '회차 × ' +
+      sim.gamesPerRound + '게임 = 총 ' + t.games.toLocaleString() + '게임 · ' + t.sec + '초';
+    resultBox.classList.add('show');
+  }
+
+  var simLockBtns = [startBtn, resetBtn, quickDrawBtn, instantPlayBtn, checkBtn, randomPickBtn, clearPickBtn, registerBtn, clearGamesBtn];
+  var simPrevDisabled = null;
+
+  function simLock(){
+    simPrevDisabled = simLockBtns.map(function(b){ return b.disabled; });
+    simLockBtns.forEach(function(b){ b.disabled = true; });
+    gameCountSel.disabled = true;
+    targetRankSel.disabled = true;
+    jackpotBtn.textContent = targetRank + '등까지 추첨 중지';
+  }
+
+  function simUnlock(){
+    if(simPrevDisabled) simLockBtns.forEach(function(b,i){ b.disabled = simPrevDisabled[i]; });
+    simPrevDisabled = null;
+    gameCountSel.disabled = false;
+    targetRankSel.disabled = false;
+    jackpotBtn.textContent = targetRank + '등까지 추첨';
+  }
+
+  function simStep(){
+    if(!sim) return;
+    var t0 = performance.now();
+    do {
+      for(var r=0;r<500;r++){
+        sim.rounds++;
+        var hit = simRound(sim);
+        if(hit>=0){ simFinish(hit); return; }
+      }
+    } while(performance.now()-t0 < 24);
+    showSimProgress('추첨 중');
+    sim.timer = setTimeout(simStep, 0);
+  }
+
+  // 목표 등수가 나온 회차를 화면에 그대로 재현한다(트레이 당첨번호 + 그 회차의 게임 목록).
+  function simFinish(hitIdx){
+    var st = sim, t = simTotals();
+    simStop(false);
+
+    drawnMain = [st.draw[0],st.draw[1],st.draw[2],st.draw[3],st.draw[4],st.draw[5]];
+    drawnBonus = st.draw[6];
+    clearTray();
+    buildBalls();
+    for(var i=0;i<6;i++) placeBallInstant(drawnMain[i], i);
+    placeBallInstant(drawnBonus, 'bonus');
+    beep(760, 0.1);
+
+    myGames = [];
+    for(var g=0; g<st.gamesPerRound; g++){
+      var nums = Array.prototype.slice.call(st.games, g*6, g*6+6).sort(function(a,b){return a-b;});
+      myGames.push({ nums: nums, rank: null });
+    }
+    checkResult();
+    resultBox.innerHTML = '🎉 ' + st.targetRank + '등 목표 달성 — ' + st.hitRank + '등 당첨! (' +
+      (hitIdx+1) + '번째 게임) · ' + t.rounds.toLocaleString() + '회차 × ' + st.gamesPerRound +
+      '게임 = 총 ' + t.games.toLocaleString() + '게임 · ' + t.sec + '초<br>' + resultBox.innerHTML;
+
+    startBtn.disabled = true;
+    resetBtn.disabled = false;
+    checkBtn.disabled = false;
+    setStatus('추첨 완료! 당첨번호: ' + drawnMain.slice().sort(function(a,b){return a-b;}).join(', ') + ' + 보너스 ' + drawnBonus);
+  }
+
+  function simStart(){
+    var n = targetGameCount;
+    sim = { gamesPerRound: n, targetRank: targetRank, hitRank: null, rounds: 0,
+            draw: new Int32Array(7), games: new Int32Array(n*6), t0: performance.now(), timer: null };
+    simLock();
+    regMsg.textContent = '';
+    showSimProgress('추첨 중');
+    sim.timer = setTimeout(simStep, 0);
+  }
+
+  function simStop(report){
+    if(!sim) return;
+    clearTimeout(sim.timer);
+    if(report) showSimProgress('중지됨');
+    simUnlock();
+    sim = null;
+  }
+
+  function toggleJackpotSim(){
+    if(sim) simStop(true); else simStart();
+  }
+
   clearGamesBtn.addEventListener('click', clearGames);
 
   startBtn.addEventListener('click', startDraw);
   resetBtn.addEventListener('click', resetMachine);
   quickDrawBtn.addEventListener('click', quickDraw);
   instantPlayBtn.addEventListener('click', instantPlay);
+  jackpotBtn.addEventListener('click', toggleJackpotSim);
+  targetRankSel.addEventListener('change', function(){
+    targetRank = parseInt(targetRankSel.value, 10);
+    jackpotBtn.textContent = targetRank + '등까지 추첨';
+  });
   randomPickBtn.addEventListener('click', randomPick);
   clearPickBtn.addEventListener('click', clearPick);
   registerBtn.addEventListener('click', registerGame);
