@@ -1033,34 +1033,24 @@
     sim.timer = setTimeout(simStep, 0);
   }
 
-  // 목표 등수가 나온 회차를 화면에 그대로 재현한다(트레이 당첨번호 + 그 회차의 게임 목록).
+  // 결과는 텍스트로만 보고한다. 추첨기 트레이의 당첨번호와 등록된 게임 목록은 건드리지 않는다.
   function simFinish(hitIdx){
     var st = sim, t = simTotals();
     simStop(false);
 
-    drawnMain = [st.draw[0],st.draw[1],st.draw[2],st.draw[3],st.draw[4],st.draw[5]];
-    drawnBonus = st.draw[6];
-    clearTray();
-    buildBalls();
-    for(var i=0;i<6;i++) placeBallInstant(drawnMain[i], i);
-    placeBallInstant(drawnBonus, 'bonus');
-    beep(760, 0.1);
+    var asc = function(a,b){ return a-b; };
+    var simDraw = Array.prototype.slice.call(st.draw, 0, 6).sort(asc);
+    var winGame = Array.prototype.slice.call(st.games, hitIdx*6, hitIdx*6+6).sort(asc);
 
-    myGames = [];
-    for(var g=0; g<st.gamesPerRound; g++){
-      var nums = Array.prototype.slice.call(st.games, g*6, g*6+6).sort(function(a,b){return a-b;});
-      myGames.push({ nums: nums, rank: null });
-    }
-    checkResult();
     simTotalBadge.textContent = '총 ' + t.games.toLocaleString() + '게임';
-    resultBox.innerHTML = '🎉 ' + st.targetRank + '등 목표 달성 — ' + st.hitRank + '등 당첨! (' +
-      (hitIdx+1) + '번째 게임) · ' + t.rounds.toLocaleString() + '회차 × ' + st.gamesPerRound +
-      '게임 = 총 ' + t.games.toLocaleString() + '게임 · ' + t.sec + '초<br>' + resultBox.innerHTML;
-
-    startBtn.disabled = true;
-    resetBtn.disabled = false;
-    checkBtn.disabled = false;
-    setStatus('추첨 완료! 당첨번호: ' + drawnMain.slice().sort(function(a,b){return a-b;}).join(', ') + ' + 보너스 ' + drawnBonus);
+    resultBox.innerHTML =
+      '🎉 ' + st.targetRank + '등 목표 달성 — ' + st.hitRank + '등 당첨! · ' +
+      t.rounds.toLocaleString() + '회차 × ' + st.gamesPerRound + '게임 = 총 ' +
+      t.games.toLocaleString() + '게임 · ' + t.sec + '초<br>' +
+      '시뮬레이션 당첨번호: ' + simDraw.join(', ') + ' + 보너스 ' + st.draw[6] + '<br>' +
+      '당첨 게임(' + (hitIdx+1) + '번째): ' + winGame.join(', ');
+    resultBox.classList.add('show');
+    beep(760, 0.1);
   }
 
   function simStart(){
