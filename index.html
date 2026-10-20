@@ -396,6 +396,7 @@
         <option value="5">5등</option>
       </select>
       <button class="btn-ghost btn-sm" id="jackpotBtn">1등까지 추첨</button>
+      <span class="count-badge" id="simTotalBadge">총 0게임</span>
     </div>
     <div class="picker-layout">
       <div class="picker-left">
@@ -446,6 +447,7 @@
   var instantPlayBtn = document.getElementById('instantPlayBtn');
   var jackpotBtn = document.getElementById('jackpotBtn');
   var targetRankSel = document.getElementById('targetRankSel');
+  var simTotalBadge = document.getElementById('simTotalBadge');
 
   function colorGroup(n){
     if(n<=10) return 'g1';
@@ -992,6 +994,7 @@
 
   function showSimProgress(prefix){
     var t = simTotals();
+    simTotalBadge.textContent = '총 ' + t.games.toLocaleString() + '게임';
     resultBox.innerHTML = sim.targetRank + '등 목표 · ' + prefix + ' — ' + t.rounds.toLocaleString() + '회차 × ' +
       sim.gamesPerRound + '게임 = 총 ' + t.games.toLocaleString() + '게임 · ' + t.sec + '초';
     resultBox.classList.add('show');
@@ -1049,6 +1052,7 @@
       myGames.push({ nums: nums, rank: null });
     }
     checkResult();
+    simTotalBadge.textContent = '총 ' + t.games.toLocaleString() + '게임';
     resultBox.innerHTML = '🎉 ' + st.targetRank + '등 목표 달성 — ' + st.hitRank + '등 당첨! (' +
       (hitIdx+1) + '번째 게임) · ' + t.rounds.toLocaleString() + '회차 × ' + st.gamesPerRound +
       '게임 = 총 ' + t.games.toLocaleString() + '게임 · ' + t.sec + '초<br>' + resultBox.innerHTML;
@@ -1065,6 +1069,7 @@
             draw: new Int32Array(7), games: new Int32Array(n*6), t0: performance.now(), timer: null };
     simLock();
     regMsg.textContent = '';
+    simTotalBadge.textContent = '총 0게임';
     showSimProgress('추첨 중');
     sim.timer = setTimeout(simStep, 0);
   }
