@@ -220,6 +220,7 @@
     background:var(--panel2);color:var(--text);border:1px solid #2c3a66;
     border-radius:8px;padding:6px 10px;font-size:.85rem;
   }
+  .game-count.sim-bar{justify-content:flex-start;margin-bottom:10px;gap:8px;}
   .count-badge{color:var(--accent);font-weight:600;}
   .reg-msg{min-height:1.1em;font-size:.76rem;color:#ff9b9b;margin-top:6px;}
 
@@ -386,17 +387,9 @@
         <option value="10">10게임</option>
       </select>
       <span class="count-badge" id="countBadge">0 / 5 게임 등록</span>
+      <button class="btn-primary btn-sm" id="checkBtn" disabled>결과 확인</button>
+      <button class="btn-ghost btn-sm" id="clearGamesBtn">게임 전체 삭제</button>
       <button class="btn-primary btn-sm" id="instantPlayBtn">즉시 게임 확인</button>
-      <label for="targetRankSel">희망등수</label>
-      <select id="targetRankSel">
-        <option value="1" selected>1등</option>
-        <option value="2">2등</option>
-        <option value="3">3등</option>
-        <option value="4">4등</option>
-        <option value="5">5등</option>
-      </select>
-      <button class="btn-ghost btn-sm" id="jackpotBtn">1등까지 추첨</button>
-      <span class="count-badge" id="simTotalBadge">총 0게임</span>
     </div>
     <div class="picker-layout">
       <div class="picker-left">
@@ -409,11 +402,21 @@
         <div class="reg-msg" id="regMsg"></div>
       </div>
       <div class="picker-right">
-        <div class="games-list" id="gamesList"></div>
-        <div class="pick-controls">
-          <button class="btn-primary" id="checkBtn" disabled>결과 확인</button>
-          <button class="btn-ghost" id="clearGamesBtn">게임 전체 삭제</button>
+        <div class="game-count sim-bar">
+          <label for="targetRankSel">희망등수</label>
+          <select id="targetRankSel">
+            <option value="1" selected>1등</option>
+            <option value="2">2등</option>
+            <option value="3">3등</option>
+            <option value="4">4등</option>
+            <option value="5">5등</option>
+          </select>
+          <button class="btn-ghost btn-sm" id="jackpotBtn">1등까지 추첨</button>
+          <span class="count-badge" id="simTotalBadge">총 0게임</span>
+          <label for="companionRankSel">함께추첨할 등수</label>
+          <select id="companionRankSel"></select>
         </div>
+        <div class="games-list" id="gamesList"></div>
       </div>
     </div>
     <div class="result-box" id="resultBox"></div>
@@ -448,6 +451,7 @@
   var jackpotBtn = document.getElementById('jackpotBtn');
   var targetRankSel = document.getElementById('targetRankSel');
   var simTotalBadge = document.getElementById('simTotalBadge');
+  var companionRankSel = document.getElementById('companionRankSel');
 
   function colorGroup(n){
     if(n<=10) return 'g1';
@@ -946,8 +950,23 @@
   var simPool = [];
   for(var i=1;i<=TOTAL;i++) simPool.push(i);
   var simMark = new Uint8Array(TOTAL+1);  // 현재 당첨번호(drawnMain)에 포함된 번호 = 1
-  var sim = null;   // {gamesPerRound, targetRank, hitRank, rounds, games, t0, timer}
+  var sim = null;   // {gamesPerRound, targetRank, companionRank, targetHit, companionHit, rounds, games, t0, timer}
   var targetRank = parseInt(targetRankSel.value, 10);
+  var companionRank = 0;   // 0 = 선택 안함
+
+  // 함께추첨할 등수: 희망등수를 제외한 1~5등 + 선택 안함. 기존 선택이 유효하면 유지한다.
+  function buildCompanionOptions(){
+    if(companionRank === targetRank) companionRank = 0;
+    companionRankSel.innerHTML = '<option value="0">선택 안함</option>';
+    for(var r=1;r<=5;r++){
+      if(r === targetRank) continue;
+      var opt = document.createElement('option');
+      opt.value = r;
+      opt.textContent = r + '등';
+      companionRankSel.appendChild(opt);
+    }
+    companionRankSel.value = companionRank;
+  }
 
   // 부분 Fisher–Yates: simPool 앞쪽 k개만 섞어 out[offset..offset+k-1]에 담는다.
   function pickInto(out, offset, k){
@@ -967,7 +986,8 @@
   }
 
   // 1회차 = 이미 확정된 당첨번호(drawnMain/drawnBonus)에 대해 게임 N벌을 새로 사서 판정.
-  // 목표 등수 이상을 달성한 게임 인덱스를 반환(없으면 -1). 달성 등수는 st.hitRank에 기록한다.
+  // 희망등수는 그 이상, 함께추첨할 등수는 정확히 그 등수가 처음 나온 시점을 {rank, game, total}로 기록한다.
+  // 둘 다(함께추첨 미선택이면 희망등수만) 달성한 게임 인덱스를 반환(없으면 -1).
   function simRound(st){
     var bonus = drawnBonus;
     for(var g=0; g<st.gamesPerRound; g++){
@@ -979,7 +999,11 @@
         else if(n === bonus) hb = true;
       }
       var rank = simRankOf(m, hb);
-      if(rank <= st.targetRank){ st.hitRank = rank; return g; }
+      if(rank > 5) continue;
+      var total = (st.rounds-1)*st.gamesPerRound + g + 1;
+      if(!st.targetHit && rank <= st.targetRank) st.targetHit = { rank: rank, game: g, total: total };
+      if(st.companionRank && !st.companionHit && rank === st.companionRank) st.companionHit = { rank: rank, game: g, total: total };
+      if(st.targetHit && (!st.companionRank || st.companionHit)) return g;
     }
     return -1;
   }
@@ -988,10 +1012,19 @@
     return { rounds: sim.rounds, games: sim.rounds*sim.gamesPerRound, sec: ((performance.now()-sim.t0)/1000).toFixed(1) };
   }
 
+  function simGoalLabel(st){
+    return st.targetRank + '등' + (st.companionRank ? ' + ' + st.companionRank + '등' : '') + ' 목표';
+  }
+
+  // 달성 시점: "3등 목표 → 2등 · 1,234게임째"
+  function simHitLabel(goal, hit){
+    return goal + '등 목표 → ' + (hit ? hit.rank + '등 · ' + hit.total.toLocaleString() + '게임째' : '미달성');
+  }
+
   function showSimProgress(prefix){
     var t = simTotals();
     simTotalBadge.textContent = '총 ' + t.games.toLocaleString() + '게임';
-    resultBox.innerHTML = sim.targetRank + '등 목표 · ' + prefix + ' — ' + t.rounds.toLocaleString() + '회차 × ' +
+    resultBox.innerHTML = simGoalLabel(sim) + ' · ' + prefix + ' — ' + t.rounds.toLocaleString() + '회차 × ' +
       sim.gamesPerRound + '게임 = 총 ' + t.games.toLocaleString() + '게임 · ' + t.sec + '초';
     resultBox.classList.add('show');
   }
@@ -1004,6 +1037,7 @@
     simLockBtns.forEach(function(b){ b.disabled = true; });
     gameCountSel.disabled = true;
     targetRankSel.disabled = true;
+    companionRankSel.disabled = true;
     jackpotBtn.textContent = targetRank + '등까지 추첨 중지';
   }
 
@@ -1012,6 +1046,7 @@
     simPrevDisabled = null;
     gameCountSel.disabled = false;
     targetRankSel.disabled = false;
+    companionRankSel.disabled = false;
     jackpotBtn.textContent = targetRank + '등까지 추첨';
   }
 
@@ -1029,7 +1064,7 @@
     sim.timer = setTimeout(simStep, 0);
   }
 
-  // 당첨번호는 그대로 두고, 목표 등수가 나온 마지막 회차의 게임 N벌을 게임 목록에 올린다.
+  // 당첨번호는 그대로 두고, 마지막 목표가 달성된 회차의 게임 N벌을 게임 목록에 올린다.
   function simFinish(hitIdx){
     var st = sim, t = simTotals();
     simStop(false);
@@ -1043,10 +1078,12 @@
     checkBtn.disabled = false;
 
     simTotalBadge.textContent = '총 ' + t.games.toLocaleString() + '게임';
+    var hits = simHitLabel(st.targetRank, st.targetHit) +
+      (st.companionRank ? ' · ' + simHitLabel(st.companionRank, st.companionHit) : '');
     resultBox.innerHTML =
-      '🎉 ' + st.targetRank + '등 목표 달성 — ' + (hitIdx+1) + '번째 게임 ' + st.hitRank + '등! · ' +
+      '🎉 ' + simGoalLabel(st) + ' 달성 — ' + (hitIdx+1) + '번째 게임에서 종료 · ' +
       t.rounds.toLocaleString() + '회차 × ' + st.gamesPerRound + '게임 = 총 ' +
-      t.games.toLocaleString() + '게임 · ' + t.sec + '초<br>' + resultBox.innerHTML;
+      t.games.toLocaleString() + '게임 · ' + t.sec + '초<br>' + hits + '<br>' + resultBox.innerHTML;
     beep(760, 0.1);
   }
 
@@ -1058,7 +1095,8 @@
     var n = targetGameCount;
     simMark.fill(0);
     for(var i=0;i<6;i++) simMark[drawnMain[i]] = 1;
-    sim = { gamesPerRound: n, targetRank: targetRank, hitRank: null, rounds: 0,
+    sim = { gamesPerRound: n, targetRank: targetRank, companionRank: companionRank,
+            targetHit: null, companionHit: null, rounds: 0,
             games: new Int32Array(n*6), t0: performance.now(), timer: null };
     simLock();
     regMsg.textContent = '';
@@ -1070,7 +1108,11 @@
   function simStop(report){
     if(!sim) return;
     clearTimeout(sim.timer);
-    if(report) showSimProgress('중지됨');
+    if(report){
+      showSimProgress('중지됨');
+      if(sim.companionRank) resultBox.innerHTML += '<br>' + simHitLabel(sim.targetRank, sim.targetHit) +
+        ' · ' + simHitLabel(sim.companionRank, sim.companionHit);
+    }
     simUnlock();
     sim = null;
   }
@@ -1089,6 +1131,10 @@
   targetRankSel.addEventListener('change', function(){
     targetRank = parseInt(targetRankSel.value, 10);
     jackpotBtn.textContent = targetRank + '등까지 추첨';
+    buildCompanionOptions();
+  });
+  companionRankSel.addEventListener('change', function(){
+    companionRank = parseInt(companionRankSel.value, 10);
   });
   randomPickBtn.addEventListener('click', randomPick);
   clearPickBtn.addEventListener('click', clearPick);
@@ -1097,6 +1143,7 @@
 
   buildBalls();
   buildPickGrid();
+  buildCompanionOptions();
   renderGamesList();
   animHandle = requestAnimationFrame(physicsStep);
 })();
