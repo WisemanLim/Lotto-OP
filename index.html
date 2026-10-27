@@ -78,8 +78,8 @@
     top:-2px;
     left:50%;
     transform:translateX(-50%);
-    width:34px;
-    height:16px;
+    width:50px;
+    height:20px;
     background:#05070f;
     border-radius:0 0 50% 50%;
     box-shadow:0 0 12px rgba(0,0,0,.8) inset;
@@ -87,14 +87,14 @@
   }
   .ball{
     position:absolute;
-    width:30px;
-    height:30px;
+    width:44px;
+    height:44px;
     border-radius:50%;
     display:flex;
     align-items:center;
     justify-content:center;
     font-weight:700;
-    font-size:.72rem;
+    font-size:1rem;
     color:#1a1a1a;
     box-shadow:0 2px 4px rgba(0,0,0,.5), inset -3px -3px 6px rgba(0,0,0,.25), inset 2px 2px 4px rgba(255,255,255,.6);
     will-change:transform;
@@ -117,6 +117,12 @@
     border-right:2px solid rgba(180,210,255,.3);
     margin-top:-2px;
   }
+  .chute-row{position:relative;display:flex;justify-content:center;width:100%;}
+  .speed-sel{
+    position:absolute;left:calc(50% + 20px);top:6px;
+    background:var(--panel2);color:var(--text);border:1px solid #2c3a66;
+    border-radius:8px;padding:4px 6px;font-size:.78rem;
+  }
 
   .tray{
     display:flex;
@@ -127,8 +133,8 @@
     justify-content:center;
   }
   .slot{
-    width:38px;
-    height:38px;
+    width:48px;
+    height:48px;
     border-radius:50%;
     border:2px dashed #2c3a66;
     display:flex;
@@ -250,10 +256,10 @@
     left:50%;
     bottom:6px;
     transform:translateX(-50%);
-    width:34px;
+    width:51px;
     height:0;
     background:linear-gradient(180deg,#eaf8ff,#4fd1ff);
-    border-radius:16px 16px 4px 4px;
+    border-radius:24px 24px 6px 6px;
     box-shadow:0 0 22px rgba(79,209,255,.75);
     z-index:40;
   }
@@ -311,7 +317,16 @@
         <div class="hole"></div>
         <div class="drum-inner" id="drum"></div>
       </div>
-      <div class="chute"></div>
+      <div class="chute-row">
+        <div class="chute"></div>
+        <select class="speed-sel" id="speedSel" aria-label="공 속도">
+          <option value="1">1x</option>
+          <option value="1.5">1.5x</option>
+          <option value="2">2x</option>
+          <option value="2.5" selected>2.5x</option>
+          <option value="3">3x</option>
+        </select>
+      </div>
       <div class="tray" id="tray">
         <div class="slot" data-slot="0"></div>
         <div class="slot" data-slot="1"></div>
@@ -469,7 +484,9 @@
   var drawing = false;
 
   var DRUM_R = 210;   // drum radius in px (drum-frame is 420px, border 6px -> inner ~408 -> use 204 safe margin)
-  var BALL_R = 15;
+  var BALL_R = 22;
+  var speedSel = document.getElementById('speedSel');
+  var ballSpeed = parseFloat(speedSel.value);   // physics time scale (1x = original speed)
 
   function rand(min, max){ return Math.random()*(max-min)+min; }
 
@@ -515,11 +532,23 @@
   }
 
   var lastT = null;
+  // ballSpeed scales simulated time; split into substeps so fast balls don't tunnel through each other.
   function physicsStep(t){
     if(lastT===null) lastT = t;
     var dt = Math.min((t-lastT)/1000, 0.05);
     lastT = t;
 
+    var steps = Math.ceil(ballSpeed*2);
+    for(var s=0;s<steps;s++) stepBalls(dt*ballSpeed/steps);
+
+    for(var i=0;i<balls.length;i++){
+      if(balls[i].active) renderBall(balls[i]);
+    }
+
+    animHandle = requestAnimationFrame(physicsStep);
+  }
+
+  function stepBalls(dt){
     for(var i=0;i<balls.length;i++){
       var b = balls[i];
       if(!b.active) continue;
@@ -574,12 +603,6 @@
         }
       }
     }
-
-    for(var i=0;i<balls.length;i++){
-      if(balls[i].active) renderBall(balls[i]);
-    }
-
-    animHandle = requestAnimationFrame(physicsStep);
   }
 
   function shuffledOrder(){
@@ -660,8 +683,8 @@
           void b.el.offsetHeight;
           b.el.style.transition = 'left .5s cubic-bezier(.3,.6,.3,1), top .5s cubic-bezier(.3,.6,.3,1)';
 
-          var targetX = (slotRect.left-appRect.left) + (slotRect.width-30)/2;
-          var targetY = (slotRect.top-appRect.top) + (slotRect.height-30)/2;
+          var targetX = (slotRect.left-appRect.left) + (slotRect.width-BALL_R*2)/2;
+          var targetY = (slotRect.top-appRect.top) + (slotRect.height-BALL_R*2)/2;
           requestAnimationFrame(function(){
             b.el.style.left = targetX + 'px';
             b.el.style.top = targetY + 'px';
@@ -1141,6 +1164,7 @@
   companionRankSel.addEventListener('change', function(){
     companionRank = parseInt(companionRankSel.value, 10);
   });
+  speedSel.addEventListener('change', function(){ ballSpeed = parseFloat(speedSel.value); });
   randomPickBtn.addEventListener('click', randomPick);
   clearPickBtn.addEventListener('click', clearPick);
   registerBtn.addEventListener('click', registerGame);
