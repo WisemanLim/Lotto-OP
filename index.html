@@ -220,7 +220,8 @@
     background:var(--panel2);color:var(--text);border:1px solid #2c3a66;
     border-radius:8px;padding:6px 10px;font-size:.85rem;
   }
-  .game-count.sim-bar{justify-content:flex-start;margin-bottom:10px;gap:8px;}
+  .game-count.sim-bar{justify-content:flex-start;margin-bottom:10px;gap:6px;}
+  .sim-bar #simTotalBadge{font-size:.72rem;}
   .count-badge{color:var(--accent);font-weight:600;}
   .reg-msg{min-height:1.1em;font-size:.76rem;color:#ff9b9b;margin-top:6px;}
 
@@ -957,7 +958,7 @@
   // 함께추첨할 등수: 희망등수를 제외한 1~5등 + 선택 안함. 기존 선택이 유효하면 유지한다.
   function buildCompanionOptions(){
     if(companionRank === targetRank) companionRank = 0;
-    companionRankSel.innerHTML = '<option value="0">선택 안함</option>';
+    companionRankSel.innerHTML = '<option value="0">-</option>';
     for(var r=1;r<=5;r++){
       if(r === targetRank) continue;
       var opt = document.createElement('option');
@@ -986,10 +987,11 @@
   }
 
   // 1회차 = 이미 확정된 당첨번호(drawnMain/drawnBonus)에 대해 게임 N벌을 새로 사서 판정.
-  // 희망등수는 그 이상, 함께추첨할 등수는 정확히 그 등수가 처음 나온 시점을 {rank, game, total}로 기록한다.
-  // 둘 다(함께추첨 미선택이면 희망등수만) 달성한 게임 인덱스를 반환(없으면 -1).
+  // 같은 회차 안에서 희망등수(그 이상) 게임과 함께추첨할 등수(정확히 그 등수) 게임이 서로 다른 게임으로
+  // 모두 나와야 달성. 달성 게임은 {rank, game}으로 st.targetHit/st.companionHit에 기록한다.
+  // 달성 시 마지막으로 채운 게임 인덱스를 반환(없으면 -1). 화면에 올릴 회차이므로 남은 게임도 채운다.
   function simRound(st){
-    var bonus = drawnBonus;
+    var bonus = drawnBonus, tHit = null, cHit = null;
     for(var g=0; g<st.gamesPerRound; g++){
       var base = g*6, m = 0, hb = false;
       pickInto(st.games, base, 6);
@@ -1000,10 +1002,13 @@
       }
       var rank = simRankOf(m, hb);
       if(rank > 5) continue;
-      var total = (st.rounds-1)*st.gamesPerRound + g + 1;
-      if(!st.targetHit && rank <= st.targetRank) st.targetHit = { rank: rank, game: g, total: total };
-      if(st.companionRank && !st.companionHit && rank === st.companionRank) st.companionHit = { rank: rank, game: g, total: total };
-      if(st.targetHit && (!st.companionRank || st.companionHit)) return g;
+      if(st.companionRank && !cHit && rank === st.companionRank) cHit = { rank: rank, game: g };
+      else if(!tHit && rank <= st.targetRank) tHit = { rank: rank, game: g };
+      if(tHit && (!st.companionRank || cHit)){
+        for(var r=g+1; r<st.gamesPerRound; r++) pickInto(st.games, r*6, 6);
+        st.targetHit = tHit; st.companionHit = cHit;
+        return g;
+      }
     }
     return -1;
   }
@@ -1016,9 +1021,9 @@
     return st.targetRank + '등' + (st.companionRank ? ' + ' + st.companionRank + '등' : '') + ' 목표';
   }
 
-  // 달성 시점: "3등 목표 → 2등 · 1,234게임째"
+  // 달성 게임: "3등 목표 → 2등 · 4번째 게임"
   function simHitLabel(goal, hit){
-    return goal + '등 목표 → ' + (hit ? hit.rank + '등 · ' + hit.total.toLocaleString() + '게임째' : '미달성');
+    return goal + '등 목표 → ' + hit.rank + '등 · ' + (hit.game+1) + '번째 게임';
   }
 
   function showSimProgress(prefix){
@@ -1093,6 +1098,10 @@
       return;
     }
     var n = targetGameCount;
+    if(companionRank && n < 2){
+      regMsg.textContent = '함께추첨할 등수는 2게임 이상에서 사용할 수 있습니다.';
+      return;
+    }
     simMark.fill(0);
     for(var i=0;i<6;i++) simMark[drawnMain[i]] = 1;
     sim = { gamesPerRound: n, targetRank: targetRank, companionRank: companionRank,
@@ -1108,11 +1117,7 @@
   function simStop(report){
     if(!sim) return;
     clearTimeout(sim.timer);
-    if(report){
-      showSimProgress('중지됨');
-      if(sim.companionRank) resultBox.innerHTML += '<br>' + simHitLabel(sim.targetRank, sim.targetHit) +
-        ' · ' + simHitLabel(sim.companionRank, sim.companionHit);
-    }
+    if(report) showSimProgress('중지됨');
     simUnlock();
     sim = null;
   }
